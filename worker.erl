@@ -26,8 +26,14 @@ loop(S = #state{}) ->
 			loop(handlePrivateMsg(S,MsgCount,M));
 		{status_update,MsgCount,M = #eventMessage{}} ->
 			loop(handleStatusUpdate(S,MsgCount,M));
+		{forced_flush} ->
+			loop(handleForcedFlush(S));
 		_ -> loop(S)   %ignore any other message.
 	end.
+	
+handleForcedFlush(S = #state{}) ->
+	lists:foreach(fun(A) -> gen_tcp:send(S#state.clientSocket,A#eventMessage.payload) end,S#state.msgBuffer),
+	S.
 	
 handleStatusUpdate(S = #state{}, MsgCount,M = #eventMessage{}) ->
 	SS = S#state{msgBuffer=insertMsg(M, S#state.msgBuffer)},  %% the insertion of messages can be refactored to one method
