@@ -24,14 +24,17 @@ loop(S = #state{}) ->
 			loop(handleBroadcast(S, MsgCount, M));
 		{private_message,MsgCount,M = #eventMessage{}} ->
 			loop(handlePrivateMsg(S,MsgCount,M));
-		{status_update,MsgCount,M = #eventMessage{}} ->
-			loop(handleStatusUpdate(S,MsgCount,M));
+		% {status_update,MsgCount,M = #eventMessage{}} ->
+			% loop(handleStatusUpdate(S,MsgCount,M));
 		_ -> loop(S)   %ignore any other message.
 	end.
 	
-handleStatusUpdate(S = #state{}, MsgCount,M = #eventMessage{}) ->
-	SS = S#state{msgBuffer=insertMsg(M, S#state.msgBuffer)},  %% the insertion of messages can be refactored to one method
-	tryFlushMessages(SS,MsgCount).
+% handleStatusUpdate(S = #state{}, MsgCount,M = #eventMessage{}) ->
+	% %% Get current followers
+	% FollowersList = dict:to_list(S#state.followers),
+	% lists:foreach(fun({_,V}) -> V ! {status_update,MsgCount,M} end, FollowersList),
+	% S.																				%% this is very buggy. Consider putting this activity on the dispatchers
+																					 %% hands. TODO
 	
 handlePrivateMsg(S = #state{}, MsgCount,M = #eventMessage{}) ->
 	SS = S#state{msgBuffer=insertMsg(M, S#state.msgBuffer)},  %% the insertion of messages can be refactored to one method
