@@ -3,33 +3,22 @@
 -compile(export_all).
 
 -record(state, {clients,
-				% broadcasterPid=-1,
 				currentMsgCount=0}).
 				
--record(clientRecord, {socket,
-					   workerPid}).
+% -record(clientRecord, {socket,
+					   % workerPid}).
 				
 init() ->
-	% BroadcasterPid = spawn_link(fun() -> broadcaster:init() end),
-	% DispatcherPid = spawn_link(fun() -> loop(#state{clients=dict:new()}) end), %,broadcasterPid=BroadcasterPid}).
-	% io:format("Dispatcher ready, PID is: "),
-	% {DispatcherPid}.
 	loop(#state{clients=dict:new()}).
-	
-				
+			
 loop(S = #state{}) ->
 	receive
 		{subscribe,ClientId,Socket} ->
-		    % io:format("New state is: ~p~n",[S]),
-			% io:format("Got a suscription~n"),
 			WorkerPid = spawn_link(fun() -> worker:init(Socket) end),
 			gen_tcp:controlling_process(Socket,WorkerPid),
-			% NewClients = dict:append(ClientId,make_client_record(WorkerPid,Socket),S#state.clients),
 			NewClients = dict:append(ClientId,{Socket,WorkerPid},S#state.clients),
 			loop(S#state{clients=NewClients});
 		{event, Msg} ->
-			% io:format("Got an event~n"),
-			% io:format("Looks like this: ~p~n",[Msg]),
 			OldMsgCount = S#state.currentMsgCount, 
 			NewState = S#state{currentMsgCount=OldMsgCount+1}, 
 			case utils:typeOfMsg(Msg) of
@@ -52,12 +41,12 @@ handleFollow(M = #eventMessage{},S = #state{}) ->
 	% Send message to worker who is in charge of delivering
 	% messages to ``toUserId``
 	case dict:find(M#eventMessage.toUser,S#state.clients) of
-		{ok,ClientVal} -> 
+		{ok,[{_,ToUserWorkerPid}]} -> 
 			case dict:find(M#eventMessage.fromUser,S#state.clients) of
-				{ok,FromClient} -> 
-					ClientVal#clientRecord.workerPid ! {follow,S#state.currentMsgCount,M,FromClient#clientRecord.workerPid};
+				{ok,[{_,FromUserWorkerPid}]} -> 
+					ToUserWorkerPid ! {follow,S#state.currentMsgCount,M,FromUserWorkerPid};
 				_ -> 
-					ClientVal#clientRecord.workerPid ! {follow,S#state.currentMsgCount,M}
+					ToUserWorkerPid ! {follow,S#state.currentMsgCount,M}
 			end;
 		error -> ignored
 	end.
@@ -66,8 +55,8 @@ handleUnfollow(M = #eventMessage{},S = #state{}) ->
 	% We will not notify the client but we will 
 	% tell him to drop ``fromUserId`` of his followers list
 	case dict:find(M#eventMessage.fromUser,S#state.clients) of
-		{ok,ClientVal} -> 
-			ClientVal#clientRecord.workerPid ! {unfollow,M#eventMessage.toUser};
+		{ok,[{_,WorkerPid}]} -> 
+			WorkerPid ! {unfollow,M#eventMessage.toUser};
 		error -> ignored
 	end.
 
@@ -76,29 +65,26 @@ handleBroadcast(Msg,S = #state{}) ->
 	lists:foreach(fun(A) -> A ! {broadcast,S#state.currentMsgCount, Msg} end,getWorkersPid(S)).
 	
 getWorkersPid(S = #state{}) ->
-	dict:fold(fun(_,V,Acc) -> [V#clientRecord.workerPid|Acc] end,[],S#state.clients).
+	dict:fold(fun(_,[{_,WorkerPid}],Acc) -> [WorkerPid|Acc] end,[],S#state.clients).
 	
 handlePrivateMessage(M = #eventMessage{},S = #state{}) -> 
 	case dict:find(M#eventMessage.toUser,S#state.clients) of
-		{ok,ClientVal} -> 
-			ClientVal#clientRecord.workerPid ! {private_message,S#state.currentMsgCount, M};
+		{ok,[{_,WorkerPid}]} -> 
+			WorkerPid ! {private_message,S#state.currentMsgCount, M};
 		error -> ignored
 	end.
 
 handleStatusUpdate(M = #eventMessage{},S = #state{}) ->
 	case dict:find(M#eventMessage.fromUser,S#state.clients) of
-		% {ok,ClientVal} -> 
-			% ClientVal#clientRecord.workerPid ! {status_update,S#state.currentMsgCount,M};
 		{ok,[{_,WorkerPid}]} -> 
-			% io:format("I am a workerPid: ~p~n",[WorkerPid]),
 			WorkerPid ! {status_update,S#state.currentMsgCount,M};
 		error -> ignored
 	end.
 
-make_client_record(WorkerPid,Socket) ->
-	NewRecord = #clientRecord{socket=Socket,workerPid=WorkerPid},
-	% io:format("Made this record: ~p~n",[NewRecord]),
-	NewRecord.
+% make_client_record(WorkerPid,Socket) ->
+	% NewRecord = #clientRecord{socket=Socket,workerPid=WorkerPid},
+	% % io:format("Made this record: ~p~n",[NewRecord]),
+	% NewRecord.
 			
 			
 		
