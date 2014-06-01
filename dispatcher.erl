@@ -34,7 +34,13 @@ loop(S = #state{}) ->
 					loop(handleStatusUpdate(Msg,NewState))
 			end;
 		_ -> loop(S)
+	after 5000 ->
+		notifyFlushToWorkers(S)
 	end.
+	
+notifyFlushToWorkers(S) -> 
+	Pids = getWorkersPid(S),
+	lists:foreach(fun(W) ->  W ! {forced_flush} end,Pids).
 	
 handleFollow(M = #eventMessage{},S = #state{}) -> 
 	% Send message to worker who is in charge of delivering
