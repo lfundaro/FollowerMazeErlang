@@ -16,24 +16,23 @@ loop(S = #state{}) ->
 		{subscribe,ClientId,Socket} ->
 			WorkerPid = spawn_link(fun() -> worker:init(Socket) end),
 			gen_tcp:controlling_process(Socket,WorkerPid),
-			NewClients = dict:append(ClientId,{Socket,WorkerPid},S#state.clients),
+			NewClients = dict:append(ClientId,{[],Socket,WorkerPid},S#state.clients),
 			loop(S#state{clients=NewClients});
 		{event, Msg} ->
 			OldMsgCount = S#state.currentMsgCount, 
 			NewState = S#state{currentMsgCount=OldMsgCount+1}, 
 			case utils:typeOfMsg(Msg) of
 				follow ->
-					handleFollow(Msg,NewState);
+					loop(handleFollow(Msg,NewState));
 				unfollow ->
-					handleUnfollow(Msg,NewState);
+					loop(handleUnfollow(Msg,NewState));
 				broadcast ->
-					handleBroadcast(Msg,NewState);
+					loop(handleBroadcast(Msg,NewState));
 				private_message ->
-					handlePrivateMessage(Msg,NewState);
+					loop(handlePrivateMessage(Msg,NewState));
 				status_update ->
-					handleStatusUpdate(Msg,NewState)
-			end,
-			loop(NewState);
+					loop(handleStatusUpdate(Msg,NewState))
+			end;
 		_ -> loop(S)
 	end.
 	
@@ -41,45 +40,60 @@ handleFollow(M = #eventMessage{},S = #state{}) ->
 	% Send message to worker who is in charge of delivering
 	% messages to ``toUserId``
 	case dict:find(M#eventMessage.toUser,S#state.clients) of
-		{ok,[{_,ToUserWorkerPid}]} -> 
-			case dict:find(M#eventMessage.fromUser,S#state.clients) of
-				{ok,[{_,FromUserWorkerPid}]} -> 
-					ToUserWorkerPid ! {follow,S#state.currentMsgCount,M,FromUserWorkerPid};
-				_ -> 
-					ToUserWorkerPid ! {follow,S#state.currentMsgCount,M}
-			end;
-		error -> ignored
+		{ok,[{_,_,ToUserWorkerPid}]} -> 
+			ToUserWorkerPid ! {follow,S#state.currentMsgCount,M},
+			SS = S#state{clients=dict:update(M#eventMessage.toUser,fun([{L,So,Wp}]) -> 
+														[{[M#eventMessage.fromUser|L],So,Wp}] end,S#state.clients)},
+			SS;
+		error -> S
 	end.
 
 handleUnfollow(M = #eventMessage{},S = #state{}) -> 
 	% We will not notify the client but we will 
 	% tell him to drop ``fromUserId`` of his followers list
 	case dict:find(M#eventMessage.fromUser,S#state.clients) of
-		{ok,[{_,WorkerPid}]} -> 
-			WorkerPid ! {unfollow,M#eventMessage.toUser};
-		error -> ignored
+		{ok,[{_,_,WorkerPid}]} -> 
+			WorkerPid ! {unfollow,M#eventMessage.toUser},
+			SS = S#state{clients=dict:update(M#eventMessage.fromUser,fun([{L,So,Wp}]) ->
+													[{lists:delete(M#eventMessage.fromUser,L),So,Wp}] end,S#state.clients)},
+			SS;
+		error -> S
 	end.
 
 handleBroadcast(Msg,S = #state{}) ->
 	% S#state.broadcasterPid ! {broadcast,S#state.currentMsgCount,Msg,getWorkersPid(S)}.
-	lists:foreach(fun(A) -> A ! {broadcast,S#state.currentMsgCount, Msg} end,getWorkersPid(S)).
+	lists:foreach(fun(A) -> A ! {broadcast,S#state.currentMsgCount, Msg} end,getWorkersPid(S)),
+	S.
 	
 getWorkersPid(S = #state{}) ->
-	dict:fold(fun(_,[{_,WorkerPid}],Acc) -> [WorkerPid|Acc] end,[],S#state.clients).
+	dict:fold(fun(_,[{_,_,WorkerPid}],Acc) -> [WorkerPid|Acc] end,[],S#state.clients).
 	
 handlePrivateMessage(M = #eventMessage{},S = #state{}) -> 
 	case dict:find(M#eventMessage.toUser,S#state.clients) of
-		{ok,[{_,WorkerPid}]} -> 
-			WorkerPid ! {private_message,S#state.currentMsgCount, M};
-		error -> ignored
+		{ok,[{_,_,WorkerPid}]} -> 
+			WorkerPid ! {private_message,S#state.currentMsgCount, M},
+			S;
+		error -> S
 	end.
 
 handleStatusUpdate(M = #eventMessage{},S = #state{}) ->
 	case dict:find(M#eventMessage.fromUser,S#state.clients) of
-		{ok,[{_,WorkerPid}]} -> 
-			WorkerPid ! {status_update,S#state.currentMsgCount,M};
-		error -> ignored
+		{ok,[{Followers,_,_}]} -> 
+			FollowersPids = getFollowersPids(Followers,S),
+			lists:foreach(fun(W) -> W ! {status_update,S#state.currentMsgCount,M} end, FollowersPids),
+			S;
+		error -> S
 	end.
+	
+getFollowersPids([],_) -> [];
+getFollowersPids(Followers,S = #state{}) ->
+	lists:foldl(fun(E,Acc) ->  
+							case dict:find(E,S#state.clients) of 
+								{ok,[{_,_,WorkerPid}]} -> [WorkerPid|Acc];
+								_ -> Acc
+							end
+							end,[],Followers).
+	
 
 % make_client_record(WorkerPid,Socket) ->
 	% NewRecord = #clientRecord{socket=Socket,workerPid=WorkerPid},
