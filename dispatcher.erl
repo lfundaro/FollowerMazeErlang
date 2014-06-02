@@ -34,8 +34,8 @@ loop(S = #state{}) ->
 					loop(handleStatusUpdate(Msg,NewState))
 			end;
 		_ -> loop(S)
-	after 5000 ->
-		notifyFlushToWorkers(S)
+	% after 3000 ->
+		% notifyFlushToWorkers(S)
 	end.
 	
 notifyFlushToWorkers(S) -> 
@@ -48,23 +48,35 @@ handleFollow(M = #eventMessage{},S = #state{}) ->
 	case dict:find(M#eventMessage.toUser,S#state.clients) of
 		{ok,[{_,_,ToUserWorkerPid}]} -> 
 			ToUserWorkerPid ! {follow,S#state.currentMsgCount,M},
-			SS = S#state{clients=dict:update(M#eventMessage.toUser,fun([{L,So,Wp}]) -> 
-														[{[M#eventMessage.fromUser|L],So,Wp}] end,S#state.clients)},
-			SS;
+			case dict:is_key(M#eventMessage.fromUser,S#state.clients) of 
+				true -> 
+					SS = S#state{clients=dict:update(M#eventMessage.toUser,fun([{L,So,Wp}]) -> 
+													[{[M#eventMessage.fromUser|L],So,Wp}] end,S#state.clients)},
+					SS;
+				false -> S 
+			end;
 		error -> S
 	end.
 
 handleUnfollow(M = #eventMessage{},S = #state{}) -> 
 	% We will not notify the client but we will 
 	% tell him to drop ``fromUserId`` of his followers list
-	case dict:find(M#eventMessage.fromUser,S#state.clients) of
-		{ok,[{_,_,WorkerPid}]} -> 
-			WorkerPid ! {unfollow,M#eventMessage.toUser},
-			SS = S#state{clients=dict:update(M#eventMessage.fromUser,fun([{L,So,Wp}]) ->
-													[{lists:delete(M#eventMessage.fromUser,L),So,Wp}] end,S#state.clients)},
+	% case dict:find(M#eventMessage.fromUser,S#state.clients) of
+		% {ok,[{_,_,WorkerPid}]} -> 
+			% WorkerPid ! {unfollow,M#eventMessage.toUser},
+			% SS = S#state{clients=dict:update(M#eventMessage.fromUser,fun([{L,So,Wp}]) ->
+													% [{lists:delete(M#eventMessage.fromUser,L),So,Wp}] end,S#state.clients)},
+			% SS;
+		% error -> S
+	% end.
+	case dict:find(M#eventMessage.toUser,S#state.clients) of 
+		{ok,_} ->
+			SS = S#state{clients=dict:update(M#eventMessage.toUser,fun([{L,So,Wp}]) ->
+											[{lists:delete(M#eventMessage.fromUser,L),So,Wp}] end,S#state.clients)},
 			SS;
 		error -> S
 	end.
+			
 
 handleBroadcast(Msg,S = #state{}) ->
 	% S#state.broadcasterPid ! {broadcast,S#state.currentMsgCount,Msg,getWorkersPid(S)}.
