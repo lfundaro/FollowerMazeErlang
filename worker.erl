@@ -14,8 +14,8 @@ init(Socket) ->
 	
 loop(S = #state{}) -> 
 	receive
-		{follow,MsgCount,M = #eventMessage{},FollowerPid} ->
-			loop(handleFollow(S,MsgCount,M,FollowerPid));
+		% {follow,MsgCount,M = #eventMessage{},FollowerPid} ->
+			% loop(handleFollow(S,MsgCount,M,FollowerPid));
 		{follow,MsgCount,M = #eventMessage{}} ->
 			loop(handleFollow(S,MsgCount,M));
 		{unfollow,M = #eventMessage{}} ->
@@ -68,10 +68,10 @@ handleFollow(S = #state{}, MsgCount,M = #eventMessage{}) ->
 	SS = S#state{msgBuffer=insertMsg(M, S#state.msgBuffer)},  %% the insertion of messages can be refactored to one method
 	tryFlushMessages(SS,MsgCount).
 	
-handleFollow(S = #state{}, MsgCount,M = #eventMessage{},FollowerPid) ->
-	SS = S#state{msgBuffer=insertMsg(M, S#state.msgBuffer)},
-	SSS = SS#state{followers=dict:append(M#eventMessage.fromUser,FollowerPid,SS#state.followers)},
-	tryFlushMessages(SSS, MsgCount).
+% handleFollow(S = #state{}, MsgCount,M = #eventMessage{},FollowerPid) ->
+	% SS = S#state{msgBuffer=insertMsg(M, S#state.msgBuffer)},
+	% SSS = SS#state{followers=dict:append(M#eventMessage.fromUser,FollowerPid,SS#state.followers)},
+	% tryFlushMessages(SSS, MsgCount).
 	
 tryFlushMessages(S = #state{}, MsgCount) ->
 	OutboundMessages = lists:filter(fun(_A) -> _A#eventMessage.seq =< MsgCount end,S#state.msgBuffer),
