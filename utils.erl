@@ -44,3 +44,23 @@ tokenize(Input) ->
 	string:tokens(binary_to_list(Input),"|\r\n").
 	
 typeOfMsg(M = #eventMessage{}) -> M#eventMessage.type.
+
+insertNumber(Seq, []) -> [Seq];
+insertNumber(Seq, [H|T]) -> 
+	if Seq < H -> 
+			[Seq|[H|T]];
+	   Seq > H -> 
+			insertNumberTailRec(Seq, T, [H]);
+		true ->
+			[H|T]
+	end.
+	
+insertNumberTailRec(Seq, [], Acc) -> Acc ++ [Seq]; 
+insertNumberTailRec(Seq, [H|T], Acc) ->
+	if Seq < H -> 
+			Acc ++ [Seq|[H|T]];
+	   Seq > H -> 
+			insertNumberTailRec(Seq, T, Acc ++ [H]);
+	   true ->
+			Acc ++ [H|T]
+	end.
