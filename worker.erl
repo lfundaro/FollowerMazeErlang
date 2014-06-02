@@ -26,18 +26,28 @@ loop(S = #state{}) ->
 			loop(handlePrivateMsg(S,MsgCount,M));
 		{status_update,MsgCount,M = #eventMessage{}} ->
 			loop(handleStatusUpdate(S,MsgCount,M));
-		{forced_flush} ->
-			loop(handleForcedFlush(S));
+		{try_delivery,From,To} ->
+			loop(handleTryDelivery(S,From,To));
+		% {forced_flush} ->
+			% loop(handleForcedFlush(S));
 		_ -> loop(S)   %ignore any other message.
 	end.
 	
-handleForcedFlush(S = #state{}) ->
-	lists:foreach(fun(A) -> gen_tcp:send(S#state.clientSocket,A#eventMessage.payload) end,S#state.msgBuffer),
-	S.
+handleTryDelivery(S = #state{},From,To) -> 
+	MessagesToDeliver = [ Message || Message <- S#state.msgBuffer, Message#eventMessage.seq >= 1 andalso Message#eventMessage.seq =< To],
+	io:format("Client ~p flushing messages ~p~n",[self(),MessagesToDeliver]),
+	lists:foreach(fun(A) -> gen_tcp:send(S#state.clientSocket,A#eventMessage.payload) end,MessagesToDeliver),
+	SS = S#state{msgBuffer=drop(length(MessagesToDeliver),S#state.msgBuffer)},
+	SS.
+	
+% handleForcedFlush(S = #state{}) ->
+	% lists:foreach(fun(A) -> gen_tcp:send(S#state.clientSocket,A#eventMessage.payload) end,S#state.msgBuffer),
+	% S.
 	
 handleStatusUpdate(S = #state{}, MsgCount,M = #eventMessage{}) ->
 	SS = S#state{msgBuffer=insertMsg(M, S#state.msgBuffer)},  %% the insertion of messages can be refactored to one method
-	tryFlushMessages(SS,MsgCount).
+	SS.
+	% tryFlushMessages(SS,MsgCount).
 	% %% Get current followers
 	% FollowersList = dict:to_list(S#state.followers),
 	% lists:foreach(fun({_,V}) -> V ! {status_update,MsgCount,M} end, FollowersList),
@@ -46,11 +56,13 @@ handleStatusUpdate(S = #state{}, MsgCount,M = #eventMessage{}) ->
 	
 handlePrivateMsg(S = #state{}, MsgCount,M = #eventMessage{}) ->
 	SS = S#state{msgBuffer=insertMsg(M, S#state.msgBuffer)},  %% the insertion of messages can be refactored to one method
-	tryFlushMessages(SS,MsgCount).
+	SS.
+	% tryFlushMessages(SS,MsgCount).
 	
 handleBroadcast(S = #state{}, MsgCount,M = #eventMessage{}) ->
 	SS = S#state{msgBuffer=insertMsg(M, S#state.msgBuffer)},  %% the insertion of messages can be refactored to one method
-	tryFlushMessages(SS,MsgCount).
+	SS.
+	% tryFlushMessages(SS,MsgCount).
 	
 handleUnfollow(S = #state{},M = #eventMessage{}) ->
 	% We will not notify the client of this action, but we will 
@@ -66,22 +78,23 @@ handleUnfollow(S = #state{},M = #eventMessage{}) ->
 	
 handleFollow(S = #state{}, MsgCount,M = #eventMessage{}) -> 
 	SS = S#state{msgBuffer=insertMsg(M, S#state.msgBuffer)},  %% the insertion of messages can be refactored to one method
-	tryFlushMessages(SS,MsgCount).
+	SS.
+	% tryFlushMessages(SS,MsgCount).
 	
 % handleFollow(S = #state{}, MsgCount,M = #eventMessage{},FollowerPid) ->
 	% SS = S#state{msgBuffer=insertMsg(M, S#state.msgBuffer)},
 	% SSS = SS#state{followers=dict:append(M#eventMessage.fromUser,FollowerPid,SS#state.followers)},
 	% tryFlushMessages(SSS, MsgCount).
 	
-tryFlushMessages(S = #state{}, MsgCount) ->
-	OutboundMessages = lists:filter(fun(_A) -> _A#eventMessage.seq =< MsgCount end,S#state.msgBuffer),
-		if length(OutboundMessages) > 0 -> 
-				lists:foreach(fun(A) -> gen_tcp:send(S#state.clientSocket,A#eventMessage.payload) end,OutboundMessages),
-				SS = S#state{msgBuffer=drop(length(OutboundMessages),S#state.msgBuffer)},
-				SS;
-			length(OutboundMessages) =:= 0 ->
-				S
-		end.
+% tryFlushMessages(S = #state{}, MsgCount) ->
+	% OutboundMessages = lists:filter(fun(_A) -> _A#eventMessage.seq =< MsgCount end,S#state.msgBuffer),
+		% if length(OutboundMessages) > 0 -> 
+				% lists:foreach(fun(A) -> gen_tcp:send(S#state.clientSocket,A#eventMessage.payload) end,OutboundMessages),
+				% SS = S#state{msgBuffer=drop(length(OutboundMessages),S#state.msgBuffer)},
+				% SS;
+			% length(OutboundMessages) =:= 0 ->
+				% S
+		% end.
 	
 drop(N,L) when N =< 0 -> L;
 drop(N,L) ->

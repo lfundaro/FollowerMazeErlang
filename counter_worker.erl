@@ -5,15 +5,16 @@
 				startSeq=1}).
 
 init() ->
+	io:format("Counter worker started~n"),
 	loop(#state{}).
 	
 loop(S = #state{}) ->
 	receive
-		{new_event,currentSeq,replyTo} ->
-			SS = S#state{msgBuffer = addNewSeq(S#state.msgBuffer,currentSeq)},
+		{new_event,CurrentSeq,ReplyTo} ->
+			SS = S#state{msgBuffer = addNewSeq(S#state.msgBuffer,CurrentSeq)},
 			case checkForFlush(SS) of
 				{true,From,To,NewMsgBuffer,NewStartSeq} ->
-					replyTo ! {call_flush,From,To},
+					ReplyTo ! {call_flush,From,To},
 					loop(SS#state{msgBuffer=NewMsgBuffer,startSeq=NewStartSeq});
 				{false} -> loop(SS)
 			end;
@@ -26,6 +27,7 @@ addNewSeq(Buffer, CurrentSeq) ->
 checkForFlush(S = #state{}) ->
 	From = S#state.startSeq,
 	MsgBuffer = S#state.msgBuffer,
+	% io:format("Current msg buffer: ~p~n",[MsgBuffer]),
 	{To,NewMsgBuffer} = dropForFlush(From,MsgBuffer),
 	if To =:= From ->    %Nothing changed
 		{false};
