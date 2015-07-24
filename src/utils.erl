@@ -1,7 +1,10 @@
 -module(utils).
 -include("eventMessage.hrl").
--compile(export_all).
+-export([parse_input/1,seqToInt/1,tokenize/1,typeOfMsg/1]).
 
+% It parses the input coming from an event source 
+% or a client. For any non recognized input, it returns 
+% the undefined atom. 
 parse_input(Input) ->
 	case tokenize(Input) of
 		[Sq,"F",Fu,Tu] ->
@@ -34,33 +37,17 @@ parse_input(Input) ->
 		[ClientId] -> ClientId;
 		_ -> undefined
 	end.
-	
+
+% Transform an integer sequence  to 
+% an erlang native integer e.g.: "2345" -> 2345.
 seqToInt(Sq) ->
 	case string:to_integer(Sq) of 
 		{Int,_} -> Int
 	end.
-	
+
+% Strips characters such as |\r\n from the input sequence.
 tokenize(Input) ->  
 	string:tokens(binary_to_list(Input),"|\r\n").
 	
+% Returns the type of message
 typeOfMsg(M = #eventMessage{}) -> M#eventMessage.type.
-
-insertNumber(Seq, []) -> [Seq];
-insertNumber(Seq, [H|T]) -> 
-	if Seq < H -> 
-			[Seq|[H|T]];
-	   Seq > H -> 
-			insertNumberTailRec(Seq, T, [H]);
-		true ->
-			[H|T]
-	end.
-	
-insertNumberTailRec(Seq, [], Acc) -> Acc ++ [Seq]; 
-insertNumberTailRec(Seq, [H|T], Acc) ->
-	if Seq < H -> 
-			Acc ++ [Seq|[H|T]];
-	   Seq > H -> 
-			insertNumberTailRec(Seq, T, Acc ++ [H]);
-	   true ->
-			Acc ++ [H|T]
-	end.
